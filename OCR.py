@@ -16,7 +16,7 @@
 
 # ## 지류 티켓
 
-# In[2]:
+# In[1]:
 
 
 from fastapi import FastAPI, UploadFile, File
@@ -41,7 +41,7 @@ date_pattern = r"(\d{4}[./-]\d{1,2}[./-]\d{1,2}|\d{4}년\s?\d{1,2}월\s?\d{1,2}�
         # 좌석 패턴 (~석, ~구역, ~열, ~번이 포함된 부분) -> 이부분 애매함... ㅜㅜ
 seat_pattern = r"((\w+루\s?[\w가-힣]*\s?(석|존))|\w+구역|\d+열|\d+번)"
 @app.post("/upload_paperTicket")
-async def upload_ticket(file: UploadFile = File(...)):
+async def upload_paperTicket(file: UploadFile = File(...)):
     # 파일을 메모리에 로드
     image_bytes = await file.read()
 
@@ -83,11 +83,28 @@ async def upload_ticket(file: UploadFile = File(...)):
     # 튜플에서 첫 번째 값만 추출하여 결합
     seat = " ".join(match[0] for match in seat_matches if match[0]) if seat_matches else ""
     
-    ticket_info = {
-        "away_team": away_team,
-        "ticket_date": ticket_date,
-        "seat": seat
-    }
+    # 누락된 항목 확인
+    missing_fields = []
+    if not away_team:
+        missing_fields.append("팀명을 찾을 수 없습니다.")
+    if not ticket_date:
+        missing_fields.append("날짜를 찾을 수 없습니다.")
+    if not seat:
+        missing_fields.append("좌석 정보를 찾을 수 없습니다.")
+
+    # 실패 응답
+    if missing_fields:
+        return {
+            "status": "fail",
+            "message": "티켓 정보를 인식하지 못하였습니다.",
+            "details": missing_fields
+        }
+
+        ticket_info = {
+            "away_team": away_team,
+            "ticket_date": ticket_date,
+            "seat": seat
+        }
 
     # 결과 반환
     return ticket_info

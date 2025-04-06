@@ -11,107 +11,114 @@
 # In[25]:
 
 
-team_to_stadium = {
-        "잠실": "서울 잠실야구장",
-        "광주": "광주 기아 챔피언스 필드",
-        "대구": "대구 삼성 라이온즈 파크",
-        "사직": "부산 사직야구장",
-        "대전": "대전 한화생명 볼 파크",
-        "고척": "서울 고척스카이돔",
-        "창원": "창원 NC 파크",
-        "문학": "인천 SSG 랜더스필드",
-        "수원": "수원 KT 위즈 파크"
-}
 
 
-# In[13]:
+
+# In[2]:
 
 
 import mysql.connector
 from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
-import schedule
-import time
+import re
 
+# 경기장 매핑
+team_to_stadium = {
+    "잠실": "서울 잠실야구장",
+    "광주": "광주 기아 챔피언스 필드",
+    "대구": "대구 삼성 라이온즈 파크",
+    "사직": "부산 사직야구장",
+    "대전": "대전 한화생명 볼 파크",
+    "고척": "서울 고척스카이돔",
+    "창원": "창원 NC 파크",
+    "문학": "인천 SSG 랜더스필드",
+    "수원": "수원 KT 위즈 파크"
+}
 
-# In[30]:
-
-
-# MySQL 연결 설정
+# MySQL 연결
 def connect_to_mysql():
     conn = mysql.connector.connect(
-        host="localhost",       
-        user="root",            
-        password="1234",        
-        database="baseball"     
+        host="localhost",
+        user="root",
+        password="1234",
+        database="baseball"
     )
     return conn, conn.cursor()
 
+# 메인 함수
 def job():
-     #MySQL 연결 재확인
     conn, cursor = connect_to_mysql()
 
-    # 당일 날짜 가져오기
-    today = (datetime.today() + timedelta(days=1)).date()
-    current_day = today.day
-    current_year = today.year
-    current_month = today.month
-
-    # 날짜에 맞는 URL 가져오기
-    url = f"https://statiz.sporki.com/schedule/?year={current_year}&month={current_month}"
+    # 3일 후 기준 날짜
+    today = datetime.today().date()
+    url = f"https://statiz.sporki.com/schedule/?m=daily&date={today}"
     response = requests.get(url)
     soup = BeautifulSoup(response.text, "html.parser")
 
-    print(f"==== {current_month}월 {current_day}일 경기 정보 시작 ====\n")
-    
-    # 모든 날짜(span class="day") 태그 찾기
-    day_elements = soup.find_all("span", class_="day")
-    
-    for day_element in day_elements:
-        game_day = int(day_element.text.strip())
-        if game_day == current_day:  # 오늘 날짜와 일치하는 경우
-            parent_td = day_element.find_parent("td")
-            if parent_td:
-                games = parent_td.find_all("li")        
-                for game in games:
-                    teams = game.find_all("span", class_="team")
-                    stadium = game.find("span", class_="stadium")
-                    stadium = stadium.text.strip()
-                    weather = game.find("span", class_="weather")
-                    if weather:
-                        print(f"{teams[0].text} vs {teams[1].text} - 우천취소\n")
-                        continue
-                    # stadium 풀네임으로 변경
-                    stadium = team_to_stadium.get(stadium, "팀 매칭안됨")  
+    print(f"==== {today} 경기 정보 ====")
 
-                    # 날짜 포맷 변경
-                    print(f'팀: {teams[0].text} vs {teams[1].text}, 경기장: {stadium}, 날짜: {today}')
+    game_boxes = soup.select("div.item_box")
 
+    for game_box in game_boxes:
+        header = game_box.select_one("div.box_head")
+        if not header:
+            continue
 
-                    # GameResult 데이터 저장
-                    game_result_query = """
-                    INSERT INTO GameResult (home_team, away_team, game_date, stadium)
-                    VALUES (%s, %s, %s, %s)
-                    """
-                    game_result_values = (teams[1].text, teams[0].text, today, stadium)
-                    try:
-                        cursor.execute(game_result_query, game_result_values)
-                        game_result_id = cursor.lastrowid  # 생성된 game_result_id 가져오기
-                    except mysql.connector.Error as err:
-                        print(f"쿼리 실행 중 오류: {err}")
-                        # 오류가 발생하면 재연결
-                        conn, cursor = connect_to_mysql()
-                        cursor.execute(game_result_query, game_result_values)
-                        game_result_id = cursor.lastrowid
+        if "경기취소" in header.text:
+            continue
 
-                    # 변경사항 저장
-                    conn.commit()
+        # 1. 시간 추출 (정규식)
+        time_match = re.search(r"\d{2}:\d{2}", header.text)
+        if not time_match:
+            print(f"[경고] 시간 파싱 실패: {header.text}")
+            continue
+        time = time_match.group()  # 예: "14:00"
 
-    # 연결 종료
+        # 2. 경기장 추출
+        try:
+            stadium_kor = header.select_one("span:nth-of-type(2)").text.strip("()")
+            stadium = team_to_stadium.get(stadium_kor, "팀 매칭안됨")
+        except Exception as e:
+            print(f"[에러] 경기장 파싱 실패: {e}")
+            continue
+
+        # 3. 팀 추출
+        try:
+            team_rows = game_box.select("tbody tr")
+            away_team = team_rows[0].select_one("td").text.strip()
+            home_team = team_rows[1].select_one("td").text.strip()
+        except Exception as e:
+            print(f"[에러] 팀 정보 파싱 실패: {e}")
+            continue
+
+        # 4. datetime 결합
+        try:
+            game_datetime = datetime.strptime(f"{today} {time}", "%Y-%m-%d %H:%M")
+        except ValueError:
+            print(f"[에러] datetime 변환 실패: {today} {time}")
+            continue
+
+        print(f"▶ {away_team} vs {home_team} @ {stadium} - {game_datetime}")
+
+        # 5. DB INSERT
+        insert_query = """
+        INSERT INTO GameResult (home_team, away_team, game_date, stadium)
+        VALUES (%s, %s, %s, %s)
+        """
+        values = (home_team, away_team, game_datetime, stadium)
+
+        try:
+            cursor.execute(insert_query, values)
+        except mysql.connector.Error as err:
+            print(f"[쿼리 오류] {err}")
+            conn.rollback()
+
+    conn.commit()
     cursor.close()
     conn.close()
 
+# 실행
 job()
 
 
@@ -119,7 +126,7 @@ job()
 
 
 # 매일 02시에 job 함수 실행
-schedule.every().day.at("18:14").do(job)
+schedule.every().day.at("02:00").do(job)
 
 while True:
     print("실행중..")
