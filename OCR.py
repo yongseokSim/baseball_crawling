@@ -16,13 +16,14 @@
 
 # ## 지류 티켓
 
-# In[20]:
+# In[21]:
 
 
 from fastapi import FastAPI, UploadFile, File
 from PIL import Image
 from io import BytesIO
 import re
+import numpy as np
 from paddleocr import PaddleOCR
 
 # OCR 인스턴스 생성
@@ -101,11 +102,11 @@ async def upload_paperTicket(file: UploadFile = File(...)):
             "details": missing_fields
         }
 
-        ticket_info = {
+    ticket_info = {
             "away_team": away_team,
             "ticket_date": ticket_date,
             "seat": seat
-        }
+    }
 
     # 결과 반환
     return ticket_info
