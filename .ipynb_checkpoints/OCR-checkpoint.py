@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[3]:
 
 
 # PaddlePaddle 설치
@@ -16,13 +15,13 @@
 
 # ## 지류 티켓
 
-# In[1]:
 
 
 from fastapi import FastAPI, UploadFile, File
 from PIL import Image
 from io import BytesIO
 import re
+import numpy as np
 from paddleocr import PaddleOCR
 
 # OCR 인스턴스 생성
@@ -32,13 +31,13 @@ ocr = PaddleOCR(use_angle_cls=True, lang='korean', show_log=False)
 app = FastAPI()
 
     # 팀명 리스트
-team_keywords = ["LG", "두산", "SSG", "NC", "삼성", "KIA", "KT"]
+team_keywords = ["LG", "두산", "SSG", "NC", "삼성", "KIA", "KT", "한화"]
     
-    # 날짜 패턴 (YYYY/MM/DD, YYYY-MM-DD, 2025년 3월 27일 등)
+# 날짜 패턴 (YYYY/MM/DD, YYYY-MM-DD, 2025년 3월 27일 등)
 date_pattern = r"(\d{4}[./-]\d{1,2}[./-]\d{1,2}|\d{4}년\s?\d{1,2}월\s?\d{1,2}일)"
 
 
-        # 좌석 패턴 (~석, ~구역, ~열, ~번이 포함된 부분) -> 이부분 애매함... ㅜㅜ
+# 좌석 패턴 (~석, ~구역, ~열, ~번이 포함된 부분) -> 이부분 애매함... ㅜㅜ
 seat_pattern = r"((\w+루\s?[\w가-힣]*\s?(석|존))|\w+구역|\d+열|\d+번)"
 @app.post("/upload_paperTicket")
 async def upload_paperTicket(file: UploadFile = File(...)):
@@ -46,7 +45,8 @@ async def upload_paperTicket(file: UploadFile = File(...)):
     image_bytes = await file.read()
 
     # 이미지 파일을 BytesIO로 변환하여 PIL 이미지로 처리
-    image = Image.open(BytesIO(image_bytes))
+    image = Image.open(BytesIO(image_bytes)).convert("RGB")
+    image = np.array(image)
     
     # OCR 수행
     result = ocr.ocr(image, cls=True)
@@ -100,11 +100,11 @@ async def upload_paperTicket(file: UploadFile = File(...)):
             "details": missing_fields
         }
 
-        ticket_info = {
+    ticket_info = {
             "away_team": away_team,
             "ticket_date": ticket_date,
             "seat": seat
-        }
+    }
 
     # 결과 반환
     return ticket_info

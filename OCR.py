@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[3]:
 
 
 # PaddlePaddle 설치
@@ -12,11 +11,6 @@
 
 # fastapi 설치
 #!pip install "fastapi[all]"
-
-
-# ## 지류 티켓
-
-# In[21]:
 
 
 from fastapi import FastAPI, UploadFile, File
@@ -110,4 +104,3 @@ async def upload_paperTicket(file: UploadFile = File(...)):
 
     # 결과 반환
     return ticket_info
-
