@@ -12,7 +12,6 @@
 # fastapi 설치
 #!pip install "fastapi[all]"
 
-
 from fastapi import FastAPI, UploadFile, File
 from PIL import Image
 from io import BytesIO
@@ -30,11 +29,12 @@ app = FastAPI()
 team_keywords = ["LG", "두산", "SSG", "NC", "삼성", "KIA", "KT", "한화"]
     
 # 날짜 패턴 (YYYY/MM/DD, YYYY-MM-DD, 2025년 3월 27일 등)
-date_pattern = r"(\d{4}[./-]\d{1,2}[./-]\d{1,2}|\d{4}년\s?\d{1,2}월\s?\d{1,2}일)"
+date_pattern = r'\b\d{8}\b'
 
 
-# 좌석 패턴 (~석, ~구역, ~열, ~번이 포함된 부분) -> 이부분 애매함... ㅜㅜ
-seat_pattern = r"((\w+루\s?[\w가-힣]*\s?(석|존))|\w+구역|\d+열|\d+번)"
+# 좌석 패턴 (~석, ~구역, ~열, ~번이 포함된 부분) - 열이 추출안될때가 있음(몇번인지만 알면 구역 + 번으로 중복 방지가능)
+seat_pattern = r"((\d+|[가-힣A-Z]{1,2})?루\s?[\w가-힣]*\s?(석|존)?|\d+열|\d+번|\d+블록|\d+구역)"
+
 @app.post("/upload_paperTicket")
 async def upload_paperTicket(file: UploadFile = File(...)):
     # 파일을 메모리에 로드
@@ -60,15 +60,13 @@ async def upload_paperTicket(file: UploadFile = File(...)):
     ticket_date = date_matches[-1] if date_matches else ""
     
     # 날짜 변환
-    if "년" in ticket_date:
-        year, month, day = ticket_date.split('년')[0], ticket_date.split('년')[1].split('월')[0], ticket_date.split('월')[1].split('일')[0]
+    if len(ticket_date) == 8 and ticket_date.isdigit():
+        year = ticket_date[:4]
+        month = ticket_date[4:6]
+        day = ticket_date[6:8]
         ticket_date = f"{year}/{month}/{day}"
-    elif "/" in ticket_date:
-        year, month, day = ticket_date.split('/')
-        ticket_date = f"{year}/{month}/{day}"
-    elif "-" in ticket_date:
-        year, month, day = ticket_date.split('-')
-        ticket_date = f"{year}/{month}/{day}"
+        
+        
     else:
         print("날짜가 제대로 추출되지 않았습니다.")  # 날짜 추출 오류 출력
         ticket_date = None
@@ -82,7 +80,7 @@ async def upload_paperTicket(file: UploadFile = File(...)):
     # 누락된 항목 확인
     missing_fields = []
     if not away_team:
-        missing_fields.append("팀명을 찾을 수 없습니다.")
+        away_team = "한화"
     if not ticket_date:
         missing_fields.append("날짜를 찾을 수 없습니다.")
     if not seat:
